@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>APEX Lift</title>
+<link rel="icon" href="skin/icon-512.png">
+<style>
+:root{--bg:#0a0612;--panel:#151021;--line:#2a2238;--fg:#efeaf7;--mute:#a59cb6;--accent:#ff4f8b;--bad:#ff6b6b;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+main{width:min(400px,100%);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:14px}
+h1{margin:0;font-size:22px;letter-spacing:.02em}
+p{margin:0;color:var(--mute)}
+label{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--mute)}
+input{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:12px;cursor:pointer;background:var(--accent);color:#1a0610}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+#msg{min-height:1.3em;color:var(--mute)}#msg.err{color:var(--bad)}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>APEX Lift</h1>
+  <p id="intro">Anmelden, um das Dashboard zu öffnen.</p>
+  <form id="login" hidden>
+    <label for="em">E-Mail<input id="em" type="email" autocomplete="email" required></label>
+    <label for="pw">Passwort<input id="pw" type="password" autocomplete="current-password" required></label>
+    <button type="submit">Anmelden</button>
+    <button type="button" class="ghost" id="google">Mit Google anmelden</button>
+  </form>
+  <button type="button" class="ghost" id="out" hidden>Abmelden</button>
+  <div id="msg" role="status">Lädt …</div>
+</main>
+<script src="skin/supabase.js"></script>
+<script src="skin/supabase-config.js"></script>
+<script>
+(function(){
+  // Diese Seite enthält bewusst keine App und keine Daten. Beides kommt erst nach dem Login aus Supabase
+  // und ist dort nur für das Owner-Konto lesbar.
+  var msg=document.getElementById('msg'),form=document.getElementById('login'),out=document.getElementById('out');
+  function say(t,err){msg.textContent=t;msg.className=err?'err':''}
+  var c=window.APEX_SUPABASE_CONFIG||{};
+  if(!window.supabase||!c.url){say('Anmeldung konnte nicht geladen werden. Bitte Seite neu laden.',true);return}
+  var sb=window.supabase.createClient(c.url,c.anonKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:'pkce'}});
+  async function open(){
+    var r=await sb.auth.getSession();var session=r.data&&r.data.session;
+    if(!session){form.hidden=false;out.hidden=true;say('');return}
+    say('Dashboard wird geladen …');
+    var q=await sb.from('app_bundle').select('html').eq('id','dashboard').maybeSingle();
+    if(q.error){say('Laden fehlgeschlagen: '+q.error.message,true);out.hidden=false;return}
+    if(!q.data){say('Dieses Konto hat keinen Zugriff auf das Dashboard.',true);out.hidden=false;form.hidden=true;return}
+    var html=q.data.html;document.open();document.write(html);document.close();
+  }
+  form.addEventListener('submit',async function(e){e.preventDefault();say('Anmeldung …');
+    var r=await sb.auth.signInWithPassword({email:document.getElementById('em').value.trim(),password:document.getElementById('pw').value});
+    if(r.error){say('Anmeldung fehlgeschlagen: '+r.error.message,true);return}
+    form.hidden=true;open()});
+  document.getElementById('google').addEventListener('click',async function(){
+    var r=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.href.split('#')[0].split('?')[0]}});
+    if(r.error)say('Google-Anmeldung fehlgeschlagen: '+r.error.message,true)});
+  out.addEventListener('click',async function(){await sb.auth.signOut();location.reload()});
+  open().catch(function(e){say('Fehler: '+(e&&e.message||e),true)});
+})();
+</script>
+</body>
+</html>
