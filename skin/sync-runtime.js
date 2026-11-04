@@ -25,7 +25,7 @@ function mergeStates(a,b){const o={...a};const tomb={...(b.tomb||{}),...(a.tomb|
     else if(x&&y&&typeof x==='object'&&typeof y==='object'&&!Array.isArray(x)){o[k]={...y,...x};if(['vitals','daily'].includes(k))for(const d of Object.keys(y)){const X=x[d]||{},Y=y[d];const r={...Y,...X};if(k==='daily'){if(X.times||Y.times)r.times={...(Y.times||{}),...(X.times||{})};if(X.checkins||Y.checkins){const seen=new Set();r.checkins=[...(X.checkins||[]),...(Y.checkins||[])].filter(c=>{const kk=c.t+'|'+c.note;if(seen.has(kk))return false;seen.add(kk);return true}).sort((a,b)=>a.t-b.t)}}o[k][d]=r}}
     else if(x==null)o[k]=y}
   o.updatedAt=Math.max(a.updatedAt||0,b.updatedAt||0);return o}
-const CL={db:null,status:'start',last:null,err:null,dirty:false,busy:false,baseVersion:0,timer:null,channel:null,lastSaved:null,pullAgain:false};
+const CL={db:null,status:'start',last:(()=>{try{return +localStorage.getItem('apx-cloud-last')||null}catch(_){return null}})(),err:null,dirty:false,busy:false,baseVersion:0,timer:null,channel:null,lastSaved:null,pullAgain:false};
 const NOSYNC=new Set(['tokens']);
 const AUTH_CONFIG_KEY='apex-supabase-config';
 const LOCAL_USER_KEY='apex-sync-local-user';
@@ -100,13 +100,18 @@ function queueAuthSession(session){
   authSessionQueue=authSessionQueue.then(()=>applyAuthSession(session)).catch(setSyncError);
   return authSessionQueue
 }
+function apxStampCloud(){try{localStorage.setItem('apx-cloud-last',String(CL.last))}catch(_){}}
+// „heute 12:45“, „gestern 22:10“, sonst „Mo., 03.11. 22:10“
+function apxWhen(t){if(!t)return'nie';const d=new Date(t);if(isNaN(d))return'–';const hm=d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});const day=x=>new Date(x.getFullYear(),x.getMonth(),x.getDate()).getTime();const diff=Math.round((day(new Date())-day(d))/864e5);
+  if(diff===0)return'heute '+hm;if(diff===1)return'gestern '+hm;return d.toLocaleDateString('de-DE',{weekday:'short',day:'2-digit',month:'2-digit',...(d.getFullYear()!==new Date().getFullYear()?{year:'numeric'}:{})})+' '+hm}
+window.apxWhen=apxWhen;
 function syncReady(){const c=syncConfig();return !!(c.url&&c.anonKey&&window.supabase&&window.supabase.createClient)}
 function syncLabel(){
   if(!syncReady())return['Sync einrichten','warn'];
   if(!syncUser)return['Anmelden zum Synchronisieren','warn'];
-  if(CL.status==='ok')return[`Synchronisiert${CL.last?' · '+new Date(CL.last).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}):''}`,'ok'];
-  if(CL.status==='fehler')return['Sync fehlgeschlagen · lokal gesichert','bad'];
-  if(CL.status==='offline')return['Offline · lokal gesichert','warn'];
+  if(CL.status==='ok')return[`Synchronisiert${CL.last?' · '+apxWhen(CL.last):''}`,'ok'];
+  if(CL.status==='fehler')return[`Sync fehlgeschlagen${CL.last?' · zuletzt ok '+apxWhen(CL.last):''}`,'bad'];
+  if(CL.status==='offline')return[`Offline${CL.last?' · zuletzt '+apxWhen(CL.last):' · lokal gesichert'}`,'warn'];
   return[{start:'Prüfe Sync …',verbinde:'Verbinde …',speichert:'Synchronisiert …',lädt:'Lädt andere Geräte …','erstes Hochladen':'Erster Upload …'}[CL.status]||CL.status,'info'];
 }
 function syncUI(){
@@ -267,7 +272,7 @@ async function saveMergedState(remoteState,remoteVersion){
   const stableJSON=value=>JSON.stringify(value,(key,val)=>val&&typeof val==='object'&&!Array.isArray(val)?Object.keys(val).sort().reduce((o,k)=>(o[k]=val[k],o),{}):val);
   const expected=stableJSON(remoteState||{});
   const canonical=stableJSON(merged);
-  if(removed||canonical!==expected){CL.dirty=true;syncSoon()}else{CL.dirty=false;CL.status='ok';CL.last=Date.now();syncUI()}
+  if(removed||canonical!==expected){CL.dirty=true;syncSoon()}else{CL.dirty=false;CL.status='ok';CL.last=Date.now();apxStampCloud();syncUI()}
 }
 async function getRemoteDocument(){
   const {data,error}=await syncClient.rpc('get_sync_document');
@@ -317,7 +322,7 @@ async function cloudPush(){
     CL.baseVersion=Number(data.version)||CL.baseVersion+1;
     const current=await localSnapshot();
     CL.dirty=JSON.stringify(current)!==JSON.stringify(snapshot);
-    CL.status='ok';CL.last=Date.now();CL.err=null;
+    CL.status='ok';CL.last=Date.now();CL.err=null;apxStampCloud();
     if(CL.dirty)syncSoon();
   }catch(e){setSyncError(e)}
   finally{CL.busy=false;syncUI();if(CL.pullAgain){CL.pullAgain=false;cloudPull()}}

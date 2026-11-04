@@ -102,3 +102,13 @@ body[data-sport="foot"] .pop-hero{background-image:linear-gradient(0deg,rgba(5,9
 .pop-hero::before{z-index:0}.pop-hero>*{position:relative;z-index:1}
 .tile.pop,.tile.pop-strip{border-radius:18px;box-shadow:0 12px 28px rgba(0,0,0,.2)}
 @media(prefers-reduced-motion:reduce){.pop-hero{animation:none}.tile.pop .pop-art{transition:none}}
+
+/* Alle Kacheln unter „Mehr“ farbig mit Bild (Sportarten: Szenen, übrige Bereiche: Piktogramme) */
+.tile.pop .pop-art{display:block!important}
+.tile.pop{min-height:124px;background:linear-gradient(135deg,var(--sp),var(--sp2))!important;color:#fff!important;border:0!important}
+.tile.pop::before{background:linear-gradient(180deg,rgba(10,8,20,0) 28%,rgba(10,8,20,.78) 100%)!important}
+.tile.pop.pop-area .pop-art{object-position:right center}
+.tile.pop b{font-size:24px!important;text-shadow:0 1px 10px rgba(0,0,0,.35)}
+.tile.pop span{text-shadow:0 1px 6px rgba(0,0,0,.4)}
+.tile.pop:hover .pop-art{transform:scale(1.04)}
+@media(max-width:520px){.tiles{grid-template-columns:1fr 1fr!important}.tile.pop{min-height:112px;padding:10px 12px}.tile.pop b{font-size:20px!important}.tile.pop span{font-size:11.5px}}
