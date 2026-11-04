@@ -88,8 +88,9 @@ A.sportStats=(days=28)=>{const t=A.today();const out={};const add=(k,date)=>{if(
   return{sports:out,total,days}};
 
 /* ------------------------------------------------------------------ Boxen-Einheiten (eigene + importierte) */
-A.boxSessions=()=>{const own=A.list('boxing').map(b=>({...b,ext:false}));
-  const ext=A.list('activities').filter(a=>a&&!a.dup&&!a.excl&&a.source!=='box'&&/box/i.test(a.type||'')).map(a=>({id:a.id,date:a.date,min:a.min||null,ext:true,minSrc:'importiert'}));
+A.isBoxAct=(a)=>!!a&&!a.dup&&!a.excl&&a.source!=='box'&&(/box/i.test(a.type||'')||/box/i.test(a.name||''));
+A.boxSessions=()=>{const own=A.list('boxing').map(b=>{const g=A.list('activities').find(a=>A.isBoxAct(a)&&a.date===b.date);return{...b,ext:false,gh:g||null}});
+  const ext=A.list('activities').filter(a=>A.isBoxAct(a)&&!own.some(o=>o.date===a.date)).map(a=>({id:a.id,date:a.date,time:a.time||null,min:a.min||null,ext:true,minSrc:'importiert',gh:a}));
   return[...own,...ext].sort((a,b)=>a.date<b.date?1:a.date>b.date?-1:0)};
 A.stanceTxt=()=>{const f=S.body&&S.body.boxFront;return f==='L'?'vorderer Fuß links':f==='R'?'vorderer Fuß rechts':''};
 

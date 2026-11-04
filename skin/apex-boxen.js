@@ -146,7 +146,7 @@ function historyPanel(){const L=A.boxSessions().slice(0,40);const cmp=A.list('co
     const nt=s.notes||{};const nl=[['tech','Technik'],['cond','Kondition'],['mood','Stimmung'],['body','Befinden']].filter(([k])=>nt[k]).map(([k,l])=>`${l}: ${E(nt[k])}`);
     const cps=cmp.filter(c=>c.boxId===s.id).flatMap(c=>(c.regs||[]).map(r=>`${r.reg}${r.side&&r.side!=='M'?' '+A.sideTxt(r.side):''}`));
     return`<div class="item" style="align-items:flex-start"><span class="num mute">${A.fmtD(s.date)}</span><div class="main"><div class="t">${s.min?s.min+' min':'Dauer offen'} ${pills.join(' ')}</div>
-      ${lines.length?`<div class="small mute">${lines.join(' · ')}</div>`:''}${nl.length?`<div class="small mute">${nl.join(' · ')}</div>`:''}${cps.length?`<div class="small">${A.pill('Beschwerden: '+[...new Set(cps)].join(', '),'warn')}</div>`:''}</div>
+      ${lines.length?`<div class="small mute">${lines.join(' · ')}</div>`:''}${nl.length?`<div class="small mute">${nl.join(' · ')}</div>`:''}${cps.length?`<div class="small">${A.pill('Beschwerden: '+[...new Set(cps)].join(', '),'warn')}</div>`:''}${A.boxExtra?A.boxExtra(s):''}</div>
       ${s.ext?'':`<button class="sm ghost" data-apx="bxdel" data-v="${s.id}" aria-label="Einheit löschen">✕</button>`}</div>`}).join('')}</div>`:'<p class="small mute">Noch keine Einheiten.</p>'}</section>`}
 
 VIEWS.boxen=function(){const K=stats();
