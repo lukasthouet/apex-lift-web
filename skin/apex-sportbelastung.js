@@ -25,7 +25,7 @@ const LEGS=['qu','bb','ge','wa','ti','ad','ab','hb'];
    x = Zusatzaufschlag (exzentrisch) für die Muskeln in e, i = Stoßbelastung der Beine (0–1,5) */
 const P=[
  {id:'kick',n:'Kickboxen / Muay Thai',re:/kick|muay|thai ?box|k-1/,r:'stance',m:{hb:[.8,1],qu:[.8,1],ge:[.8,1],ad:H,sc:H,wa:M,bb:M,ab:M,vs:M,tz:M,ba:M,ss:L,br:L,ua:L},e:['hb','ad'],x:.15,i:.5},
- {id:'boxen',n:'Boxen',re:/box/,r:'stance',m:{vs:[H,.8],ss:[.8,.5],sc:[H,H],tz:H,wa:[.8,H],qu:M,ge:[.3,M],br:M,ba:M,bi:L,la:L,tr:L,ua:L,ad:L},e:[],x:0,i:.4},
+ {id:'boxen',n:'Boxen',re:/box/,r:'stance',m:{vs:[H,.55],ss:[.8,.4],sc:[H,H],tz:H,wa:[.8,H],qu:M,ge:[.3,M],br:M,ba:M,bi:L,la:L,tr:L,ua:L,ad:L},e:[],x:0,i:.4},
  {id:'bjj',n:'Jiu-Jitsu / Ringen / Judo / MMA',re:/jiu|jitsu|bjj|ringen|wrestl|judo|grappl|mma|martial|kampfsport|nahkampf/,m:{ua:H,bi:H,la:H,ur:H,tr:H,hb:H,ad:H,ge:M,qu:M,bb:M,ba:M,sc:M,or:M,br:L,tz:L,wa:L},e:['la','bi','ur','ad'],x:.3,i:.3},
  {id:'karate',n:'Karate / Taekwondo / Kampfkunst',re:/karate|taekwon|kung ?fu|capoeira|krav|aikido|selbstverteidigung/,m:{hb:H,qu:H,wa:H,ad:H,ge:M,bb:M,ba:M,sc:M,vs:L,tz:L},e:['hb','ad'],x:.15,i:.6},
  {id:'skitour',n:'Skitour',re:/ski ?tour|skitour|touren ?ski|skimo|ski ?mountaineering/,m:{qu:H,ge:H,hb:H,wa:M,bb:M,ab:M,ad:L,ur:L,la:L,tz:L,ti:L},e:['qu'],x:.15,i:.3},
@@ -75,10 +75,15 @@ const norm=(s)=>String(s||'').toLowerCase().replace(/_/g,' ');
 function classify(a){const t=norm((a.type||'')+' '+(a.name||''));if(!t.trim())return null;for(const p of P)if(p.re.test(t))return p;return null}
 const SIDE={v:null};
 
+/* Aktivitäten: Die App zählt automatisch erkannte Einheiten ohne Puls/Strecke als „Alltagsbewegung“ (isDaily) und lässt sie aus TA() weg.
+   Echte Sportarten (Boxen, Ball, Kampfsport …) werden hier trotzdem gezählt; Gehen/Laufen/Rad/Wandern bleiben bei der App-Regel. */
+const ALLTAG=new Set(['walk','laufen','bike','nordic','wandern']);
+function sportActs(){return(S.activities||[]).filter(a=>{if(!a||a.dup||a.excl)return false;if(!isDaily(a))return true;const p=classify(a);return !!p&&!ALLTAG.has(p.id)})}
+
 /* ------------------------------------------------------------------ Belastungs-Ereignisse (ersetzt cardioMusLoads) */
 function sportLoads(days=21,side){
   const out=[];const t=today();const maxHR=S.body.maxHr||(208-.7*((new Date().getFullYear())-(S.body.birthYear||1990)));
-  const raw=[...TA().map(a=>({...a,kind:a.type})),...(S.swims||[]).map(w=>({date:w.date,min:w.min,kind:'Schwimmen',time:w.time,hr:w.hr}))];
+  const raw=[...sportActs().map(a=>({...a,kind:a.type})),...(S.swims||[]).map(w=>({date:w.date,min:w.min,kind:'Schwimmen',time:w.time,hr:w.hr}))];
   // Doppelte (z. B. eigene Einheit + Google-Health-Eintrag am selben Tag) nur einmal zählen
   const groups={};const acts=[];
   for(const a of raw){if(!a.min||dayDiff(t,a.date)>days)continue;const p=classify(a);if(!p){acts.push({a,p:null});continue}
@@ -150,7 +155,7 @@ try{const o=window.b3Info||G('b3Info');if(typeof o==='function'&&!o.__apxSide){c
 const LV=(w)=>w>=.9?'hoch':w>=.5?'mittel':'gering';
 const SDN={L:'links',R:'rechts'};
 function recentRows(){const t=today();const rows=[];
-  for(const a of TA()){if(!a.min||dayDiff(t,a.date)>7)continue;const p=classify(a);if(!p)continue;
+  for(const a of sportActs()){if(!a.min||dayDiff(t,a.date)>7)continue;const p=classify(a);if(!p)continue;
     const tops=Object.entries(p.m).map(([m,s])=>{const l=wOf(s,'L',p.r),r=wOf(s,'R',p.r);return{m,l,r,mx:Math.max(l,r)}}).filter(x=>x.mx>=.9).sort((a,b)=>b.mx-a.mx).slice(0,6)
       .map(x=>`${MUS[x.m]}${Math.abs(x.l-x.r)>=.2?` (${x.l>x.r?'links':'rechts'} stärker)`:''}`);
     rows.push({d:a.date,n:p.n,min:Math.round(a.min),hr:a.hr,src:a.source||'',tops})}
