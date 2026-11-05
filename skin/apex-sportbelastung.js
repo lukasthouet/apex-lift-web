@@ -63,6 +63,14 @@ const P=[
 ];
 const PID=Object.fromEntries(P.map(p=>[p.id,p]));
 
+/* ------------------------------------------------------------------ Mobility / Dehnen
+   Dehnübung → gedehnte Muskeln (passiv: verkürzt die Erholung leicht, wenn NACH der Belastung gedehnt wurde)
+   ACTIVE: Übungen mit echter Muskelarbeit (Halten gegen Widerstand, Stabilisieren) → zählen als leichte Belastung (Gewicht je Muskel;
+   1 Min. Übungszeit ≈ 1 Satz, abgeschwächt, Schwelle wie bei Sport) */
+const DRILL_MUS={k2w:['wa','ti'],soleus:['wa'],calf:['wa'],pf:['ti'],balance:['wa','ti','ge'],quad:['qu'],ham:['bb'],couch:['hb','qu'],lunge:['hb'],'9090':['ge','ad','hb'],pigeon:['ge'],frog:['ad'],copen:['ad','sc'],squat:['qu','ge','ad','wa'],wgs:['hb','ge','sc','ur'],swingf:['hb','bb'],swings:['ad','ab'],catcow:['ur','ba'],book:['sc','or','br'],tspine:['or','ur'],child:['ur','la'],sleeper:['hs'],angel:['hs','tr','or'],door:['br','vs'],lat:['la'],disloc:['vs','hs','tr'],wrist:['ua'],neck:['tr']};
+const ACTIVE={copen:{ad:1,sc:.6},balance:{wa:.5,ti:.5,ge:.4},disloc:{hs:.5,vs:.3,tr:.3},angel:{hs:.4,or:.4,tr:.3},squat:{qu:.4,ge:.4,ad:.3},wgs:{ge:.3,hb:.2,sc:.3}};
+const STRETCH_MAX=.10,STRETCH_PER=.05;       // Erholung bis zu 10 % kürzer (5 % je Dehn-Einheit nach der Belastung)
+
 /* ------------------------------------------------------------------ Seiten */
 const body=()=>(S.body&&typeof S.body==='object')?S.body:{};
 const firstSide=(r)=>{const b=body();return r==='stance'?(b.boxFront||'L'):r==='board'?(b.boardFront||'L'):r==='foot'?(b.footDom||b.hand||'R'):(b.hand||'R')};
@@ -81,6 +89,13 @@ const ALLTAG=new Set(['walk','laufen','bike','nordic','wandern']);
 function sportActs(){return(S.activities||[]).filter(a=>{if(!a||a.dup||a.excl)return false;if(!isDaily(a))return true;const p=classify(a);return !!p&&!ALLTAG.has(p.id)})}
 
 /* ------------------------------------------------------------------ Belastungs-Ereignisse (ersetzt cardioMusLoads) */
+function mobLoads(days){const out=[];const t0=today();
+  for(const m of S.mobSessions||[]){if(!m.drills||!m.drills.length||dayDiff(t0,m.date)>days)continue;
+    const per=(m.min||10)/m.drills.length;const acc={};
+    for(const d of m.drills){const A=ACTIVE[d];if(!A)continue;for(const[k,wt]of Object.entries(A))acc[k]=(acc[k]||0)+per*wt}
+    const tt=Math.min(Date.now(),new Date(m.date+'T18:00').getTime());
+    for(const[k,eq]of Object.entries(acc)){const w=eq*SPORT_FAKTOR;if(w>=.8)out.push({m:k,t:tt,date:m.date,w,ecc:false,src:'Mobility (aktive Übungen)',min:Math.round(m.min||0),hr:null,from:''})}}
+  return out}
 function sportLoads(days=21,side){
   const out=[];const t=today();const maxHR=S.body.maxHr||(208-.7*((new Date().getFullYear())-(S.body.birthYear||1990)));
   const raw=[...sportActs().map(a=>({...a,kind:a.type})),...(S.swims||[]).map(w=>({date:w.date,min:w.min,kind:'Schwimmen',time:w.time,hr:w.hr}))];
@@ -99,12 +114,13 @@ function sportLoads(days=21,side){
         const wt=wOf(spec,side,p.r);if(!wt)continue;
         const isE=p.e.includes(m);const extra=(isE?p.x:0)+(LEGS.includes(m)?Math.min(.4,p.i*.25):0);
         const w=eq*wt*SPORT_FAKTOR*(1+extra);
-        if(w>=.8)out.push({m,t:tt,date:a.date,w,ecc:isE&&w>2,src:p.n,side:side||null})}
+        if(w>=.8)out.push({m,t:tt,date:a.date,w,ecc:isE&&w>2,src:p.n,side:side||null,min:Math.round(a.min),hr:a.hr||null,from:a.source||''})}
     }else{
       const Mm=(typeof CARDIO_MUS!=='undefined'&&CARDIO_MUS[a.kind])||null;if(!Mm)continue;
       const E=(typeof CARDIO_ECC!=='undefined'&&CARDIO_ECC[a.kind])||[];
       for(const[m,f]of Object.entries(Mm))if(eq*f>=1)out.push({m,t:tt,date:a.date,w:eq*f,ecc:E.includes(m)&&eq*f>2,src:a.kind})}
   }
+  try{out.push(...mobLoads(days))}catch(e){warn(e,'mobLoads')}
   return out}
 
 /* ------------------------------------------------------------------ recovery() mit Seiten */
@@ -112,14 +128,25 @@ const origRecovery=recovery;
 let cache=null;
 const prog=(r)=>r&&r.h!=null&&r.R?r.h/r.R:Infinity;
 function keyNow(){let mins=0;for(const a of (S.activities||[]))mins+=(a.min||0);for(const w of (S.swims||[]))mins+=(w.min||0);
-  const b=body();return[Math.floor(Date.now()/15000),(S.sets||[]).length,(S.activities||[]).length,Math.round(mins),b.hand,b.boxFront,b.boardFront,b.footDom,b.maxHr].join('|')}
+  let mob=0;for(const m of (S.mobSessions||[]))mob+=(m.min||0)+(m.drills||[]).length;
+  const b=body();return[Math.floor(Date.now()/15000),(S.sets||[]).length,(S.activities||[]).length,Math.round(mins),(S.mobSessions||[]).length,mob,b.hand,b.boxFront,b.boardFront,b.footDom,b.maxHr].join('|')}
+// Dehnen NACH der letzten Belastung verkürzt die laufende Erholung leicht (nur solange der Muskel noch in Erholung ist)
+function stretchAdjust(key,r){
+  if(!r||r.h==null||!r.R||r.h>=r.R)return r;
+  const ld=iso(Date.now()-r.h*36e5);let n=0;
+  for(const m of S.mobSessions||[]){if(!m.date||m.date<ld)continue;if(m.date===ld&&(m.drills||[]).some(d=>ACTIVE[d]&&ACTIVE[d][key]))continue;   // diese Einheit ist selbst die Belastung
+    if((m.drills||[]).some(d=>(DRILL_MUS[d]||[]).includes(key)))n++}
+  if(!n)return r;
+  const red=Math.min(STRETCH_MAX,STRETCH_PER*n);const R=Math.round(r.R*(1-red));const h=r.h;
+  const state=h<R*.45?'Gerade trainiert':h<R?'In Erholung':h<R+72?'Bereit – jetzt trainieren':'Erholt – fällig';
+  return{...r,R,R0:r.R,state,c:recHex(h,R),stretch:n,red}}
 function recoverySided(){
   const k=keyNow();if(cache&&cache.k===k)return cache.v;
   let Lr,Rr;
   try{SIDE.v='L';Lr=origRecovery.apply(this,arguments);SIDE.v='R';Rr=origRecovery.apply(this,arguments)}
   finally{SIDE.v=null}
   const out={};
-  for(const key of Object.keys(Lr)){const a=Lr[key],b=Rr[key];out[key]=prog(a)<=prog(b)?a:b;
+  for(const key of Object.keys(Lr)){const a=stretchAdjust(key,Lr[key]),b=stretchAdjust(key,Rr[key]);out[key]=prog(a)<=prog(b)?a:b;
     Object.defineProperty(out,key+'L',{value:a,enumerable:false});Object.defineProperty(out,key+'R',{value:b,enumerable:false})}
   cache={k,v:out};return out}
 function wrapRecovery(){
@@ -181,10 +208,54 @@ try{const o=window.bodyPanel||G('bodyPanel');if(typeof o==='function'&&!o.__apxS
     if(!x||typeof h!=='string')return h;const i=h.lastIndexOf('</section>');return i<0?h+x:h.slice(0,i)+x+h.slice(i)};
   w.__apxSide=1;window.bodyPanel=w;(0,eval)('bodyPanel=window.bodyPanel')}}catch(e){warn(e,'bodyPanel wrap')}
 
+/* ------------------------------------------------------------------ Erklärung beim Antippen eines Muskels (Modus Regeneration) */
+const f1=(x)=>String(Math.round(x*10)/10).replace('.',',');
+const agoTxt=(d)=>{const n=dayDiff(today(),d);return n<=0?'heute':n===1?'gestern':'vor '+n+' Tagen'};
+const hTxt=(h)=>h<48?Math.round(h)+' h':Math.round(h/24)+' Tagen';
+function strengthEvents(key){const by={};const t0=today();
+  for(const s of S.sets||[]){if(dayDiff(t0,s.date)>60)continue;const e=ex(s.exerciseId);if(!e||!e.mus)continue;const i=e.mus.indexOf(key);if(i<0)continue;
+    const t=s.t||new Date(s.date+'T18:00').getTime();const k=s.date+'|'+e.id;const o=by[k]=by[k]||{t:0,date:s.date,w:0,n:0,label:e.name,main:i===0,ecc:false,kind:'kraft'};
+    o.t=Math.max(o.t,t);o.w+=i===0?1:.5;o.n++;if(i===0&&REC_ECC.test(e.name))o.ecc=true}
+  return Object.values(by)}
+function explainHtml(key,side){
+  const lr=side==='L'||side==='R';const r=B3.rec[lr?key+side:key]||B3.rec[key];if(!r)return'';
+  const E=(s)=>{try{return esc(s)}catch(_){return String(s)}};
+  const nm=MUS[key]+(lr?(side==='L'?' links':' rechts'):'');
+  if(r.h==null)return`<strong>Warum ${E(nm)} grau ist:</strong> Für diesen Muskel gibt es noch keine erfasste Belastung (weder Krafttraining noch erkannte Sporteinheit).`;
+  const ev=[...strengthEvents(key),...sportLoads(60,lr?side:null).filter(e=>e.m===key).map(e=>({...e,kind:'sport'}))];
+  if(!ev.length)return'';
+  const tMax=Math.max(...ev.map(e=>e.t));const ld=iso(tMax);const last=ev.filter(e=>e.date===ld).sort((a,b)=>b.w-a.w);
+  const rest=Math.max(0,Math.round(r.R-r.h));
+  const item=(e)=>{
+    if(e.kind==='kraft')return`${E(agoTxt(e.date))} · ${E(e.label)}: ${e.n} ${e.n===1?'Satz':'Sätze'}${e.main?' (Hauptmuskel)':' (Nebenmuskel, zählt halb)'}${e.ecc?' · exzentrisch':''}`;
+    const p=P.find(x=>x.n===e.src);let asym='';
+    if(p&&lr&&p.m[key]!=null){const l=wOf(p.m[key],'L',p.r),rr=wOf(p.m[key],'R',p.r);if(Math.abs(l-rr)>=.2){const mine=side==='L'?l:rr,other=side==='L'?rr:l;asym=mine>other?' · diese Seite stärker belastet':' · diese Seite weniger belastet'}}
+    return`${E(agoTxt(e.date))} · ${E(e.src)} ${e.min} min${e.hr?' · Ø '+e.hr+' bpm':''}${e.from?' ('+E(e.from)+')':''}: ca. ${f1(e.w)} Satz-Äquivalente${asym}${e.ecc?' · exzentrisch':''}`};
+  const eccL=last.some(e=>e.ecc);const sets=last.reduce((x,e)=>x+e.w,0);
+  const older=ev.filter(e=>e.date!==ld).sort((a,b)=>b.t-a.t).slice(0,4);
+  const mobs=(S.mobSessions||[]).filter(m=>dayDiff(today(),m.date)<=7&&(m.drills||[]).some(d=>(DRILL_MUS[d]||[]).includes(key)));
+  return`<div><strong>Warum ${E(nm)} so eingefärbt ist</strong></div>
+   <div>${E(r.state)} – zuletzt belastet ${E(agoTxt(ld))} (vor ${hTxt(r.h)}). Erholungszeit ca. ${r.R} h, ${rest>0?'noch ca. '+(rest<48?rest+' h':Math.round(rest/24)+' Tage'):'bereits abgelaufen'}.</div>
+   <div style="margin-top:4px"><strong>Verantwortlich (letzter Belastungstag):</strong></div>
+   <ul style="margin:2px 0 4px 18px;padding:0">${last.slice(0,6).map(e=>`<li>${item(e)}</li>`).join('')}</ul>
+   <div class="mute">Rechnung: Basis ${(typeof REC_BASE!=='undefined'&&REC_BASE[key])||40} h × (0,7 + 0,075 × ${f1(Math.min(sets,8))} Sätze)${eccL?' × 1,15 (exzentrisch)':''} ≈ ${r.R0||r.R} h. Nur der letzte Belastungstag bestimmt die Dauer.</div>
+   ${r.stretch?`<div style="margin-top:4px">Dehnen nach der Belastung (${r.stretch}×) verkürzt die Erholung um ${Math.round(r.red*100)} %: ${r.R0} h → ${r.R} h.</div>`:''}
+   ${older.length?`<div class="mute" style="margin-top:4px">Davor: ${older.map(e=>item(e)).join(' · ')}</div>`:''}
+   ${mobs.length&&!r.stretch?`<div class="mute" style="margin-top:4px">Gedehnt: ${mobs.map(m=>E(agoTxt(m.date))+' ('+E(m.routine||'Mobility')+')').join(', ')} – vor der letzten Belastung, deshalb ohne Wirkung auf die Erholung.</div>`:''}`}
+function showWhy(){
+  let el=document.getElementById('spbWhy');const info=document.getElementById('b3info');
+  const s=typeof B3!=='undefined'?B3.sel:null;
+  if(!info||!s||B3.mode!=='rec'||!B3.rec||s.key==='xx'||!MUS[s.key]){if(el)el.remove();return}
+  let h='';try{h=explainHtml(s.key,s.side)}catch(e){warn(e,'explainHtml')}
+  if(!h){if(el)el.remove();return}
+  if(!el){el=document.createElement('div');el.id='spbWhy';el.className='small';el.style.cssText='margin:6px 0;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.06);line-height:1.45';info.insertAdjacentElement('afterend',el)}
+  el.innerHTML=h}
+try{const o2=window.b3Info;if(typeof o2==='function'){const w2=function(){const r=o2.apply(this,arguments);try{showWhy()}catch(e){warn(e,'showWhy')}return r};w2.__apxSide=1;window.b3Info=w2;(0,eval)('b3Info=window.b3Info')}}catch(e){warn(e,'b3Info why')}
+
 document.addEventListener('click',(e)=>{const b=e.target.closest&&e.target.closest('[data-spb]');if(!b)return;e.stopPropagation();e.preventDefault();
   const[key,val]=b.dataset.spb.split(':');if(!['hand','boxFront','boardFront','footDom'].includes(key)||!['L','R'].includes(val))return;
   if(!S.body||typeof S.body!=='object')S.body={};S.body[key]=val;cache=null;
   try{commit('Seite gespeichert')}catch(_){try{save();render()}catch(__){}}},true);
 
-window.ApexSport={profiles:P,classify,loads:sportLoads,factor:SPORT_FAKTOR,recolor:sideRecolor};
+window.ApexSport={profiles:P,classify,loads:sportLoads,factor:SPORT_FAKTOR,recolor:sideRecolor,why:explainHtml};
 })();
