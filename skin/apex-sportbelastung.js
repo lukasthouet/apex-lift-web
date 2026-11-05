@@ -99,7 +99,7 @@ function sportLoads(days=21,side){
         const wt=wOf(spec,side,p.r);if(!wt)continue;
         const isE=p.e.includes(m);const extra=(isE?p.x:0)+(LEGS.includes(m)?Math.min(.4,p.i*.25):0);
         const w=eq*wt*SPORT_FAKTOR*(1+extra);
-        if(w>=.8)out.push({m,t:tt,date:a.date,w,ecc:isE&&w>2,src:p.n,side:side||null})}
+        if(w>=.8)out.push({m,t:tt,date:a.date,w,ecc:isE&&w>2,src:p.n,side:side||null,min:Math.round(a.min),hr:a.hr||null,from:a.source||''})}
     }else{
       const Mm=(typeof CARDIO_MUS!=='undefined'&&CARDIO_MUS[a.kind])||null;if(!Mm)continue;
       const E=(typeof CARDIO_ECC!=='undefined'&&CARDIO_ECC[a.kind])||[];
@@ -181,10 +181,55 @@ try{const o=window.bodyPanel||G('bodyPanel');if(typeof o==='function'&&!o.__apxS
     if(!x||typeof h!=='string')return h;const i=h.lastIndexOf('</section>');return i<0?h+x:h.slice(0,i)+x+h.slice(i)};
   w.__apxSide=1;window.bodyPanel=w;(0,eval)('bodyPanel=window.bodyPanel')}}catch(e){warn(e,'bodyPanel wrap')}
 
+/* ------------------------------------------------------------------ Erklärung beim Antippen eines Muskels (Modus Regeneration) */
+// Dehnübungen → gedehnte Muskeln (nur Anzeige: Dehnen belastet nicht und verlängert die Erholung nicht)
+const DRILL_MUS={k2w:['wa','ti'],soleus:['wa'],calf:['wa'],pf:['ti'],balance:['wa','ti','ge'],quad:['qu'],ham:['bb'],couch:['hb','qu'],lunge:['hb'],'9090':['ge','ad','hb'],pigeon:['ge'],frog:['ad'],copen:['ad','sc'],squat:['qu','ge','ad','wa'],wgs:['hb','ge','sc','ur'],swingf:['hb','bb'],swings:['ad','ab'],catcow:['ur','ba'],book:['sc','or','br'],tspine:['or','ur'],child:['ur','la'],sleeper:['hs'],angel:['hs','tr','or'],door:['br','vs'],lat:['la'],disloc:['vs','hs','tr'],wrist:['ua'],neck:['tr']};
+const f1=(x)=>String(Math.round(x*10)/10).replace('.',',');
+const agoTxt=(d)=>{const n=dayDiff(today(),d);return n<=0?'heute':n===1?'gestern':'vor '+n+' Tagen'};
+const hTxt=(h)=>h<48?Math.round(h)+' h':Math.round(h/24)+' Tagen';
+function strengthEvents(key){const by={};const t0=today();
+  for(const s of S.sets||[]){if(dayDiff(t0,s.date)>60)continue;const e=ex(s.exerciseId);if(!e||!e.mus)continue;const i=e.mus.indexOf(key);if(i<0)continue;
+    const t=s.t||new Date(s.date+'T18:00').getTime();const k=s.date+'|'+e.id;const o=by[k]=by[k]||{t:0,date:s.date,w:0,n:0,label:e.name,main:i===0,ecc:false,kind:'kraft'};
+    o.t=Math.max(o.t,t);o.w+=i===0?1:.5;o.n++;if(i===0&&REC_ECC.test(e.name))o.ecc=true}
+  return Object.values(by)}
+function explainHtml(key,side){
+  const lr=side==='L'||side==='R';const r=B3.rec[lr?key+side:key]||B3.rec[key];if(!r)return'';
+  const E=(s)=>{try{return esc(s)}catch(_){return String(s)}};
+  const nm=MUS[key]+(lr?(side==='L'?' links':' rechts'):'');
+  if(r.h==null)return`<strong>Warum ${E(nm)} grau ist:</strong> Für diesen Muskel gibt es noch keine erfasste Belastung (weder Krafttraining noch erkannte Sporteinheit).`;
+  const ev=[...strengthEvents(key),...sportLoads(60,lr?side:null).filter(e=>e.m===key).map(e=>({...e,kind:'sport'}))];
+  if(!ev.length)return'';
+  const tMax=Math.max(...ev.map(e=>e.t));const ld=iso(tMax);const last=ev.filter(e=>e.date===ld).sort((a,b)=>b.w-a.w);
+  const rest=Math.max(0,Math.round(r.R-r.h));
+  const item=(e)=>{
+    if(e.kind==='kraft')return`${E(agoTxt(e.date))} · ${E(e.label)}: ${e.n} ${e.n===1?'Satz':'Sätze'}${e.main?' (Hauptmuskel)':' (Nebenmuskel, zählt halb)'}${e.ecc?' · exzentrisch':''}`;
+    const p=P.find(x=>x.n===e.src);let asym='';
+    if(p&&lr&&p.m[key]!=null){const l=wOf(p.m[key],'L',p.r),rr=wOf(p.m[key],'R',p.r);if(Math.abs(l-rr)>=.2){const mine=side==='L'?l:rr,other=side==='L'?rr:l;asym=mine>other?' · diese Seite stärker belastet':' · diese Seite weniger belastet'}}
+    return`${E(agoTxt(e.date))} · ${E(e.src)} ${e.min} min${e.hr?' · Ø '+e.hr+' bpm':''}${e.from?' ('+E(e.from)+')':''}: ca. ${f1(e.w)} Satz-Äquivalente${asym}${e.ecc?' · exzentrisch':''}`};
+  const eccL=last.some(e=>e.ecc);const sets=last.reduce((x,e)=>x+e.w,0);
+  const older=ev.filter(e=>e.date!==ld).sort((a,b)=>b.t-a.t).slice(0,4);
+  const mobs=(S.mobSessions||[]).filter(m=>dayDiff(today(),m.date)<=7&&(m.drills||[]).some(d=>(DRILL_MUS[d]||[]).includes(key)));
+  return`<div><strong>Warum ${E(nm)} so eingefärbt ist</strong></div>
+   <div>${E(r.state)} – zuletzt belastet ${E(agoTxt(ld))} (vor ${hTxt(r.h)}). Erholungszeit ca. ${r.R} h, ${rest>0?'noch ca. '+(rest<48?rest+' h':Math.round(rest/24)+' Tage'):'bereits abgelaufen'}.</div>
+   <div style="margin-top:4px"><strong>Verantwortlich (letzter Belastungstag):</strong></div>
+   <ul style="margin:2px 0 4px 18px;padding:0">${last.slice(0,6).map(e=>`<li>${item(e)}</li>`).join('')}</ul>
+   <div class="mute">Rechnung: Basis ${(typeof REC_BASE!=='undefined'&&REC_BASE[key])||40} h × (0,7 + 0,075 × ${f1(Math.min(sets,8))} Sätze)${eccL?' × 1,15 (exzentrisch)':''} ≈ ${r.R} h. Nur der letzte Belastungstag bestimmt die Dauer.</div>
+   ${older.length?`<div class="mute" style="margin-top:4px">Davor: ${older.map(e=>item(e)).join(' · ')}</div>`:''}
+   ${mobs.length?`<div class="mute" style="margin-top:4px">Gedehnt: ${mobs.map(m=>E(agoTxt(m.date))+' ('+E(m.routine||'Mobility')+')').join(', ')} – Dehnen zählt nicht als Belastung und verkürzt oder verlängert die Erholung nicht.</div>`:''}`}
+function showWhy(){
+  let el=document.getElementById('spbWhy');const info=document.getElementById('b3info');
+  const s=typeof B3!=='undefined'?B3.sel:null;
+  if(!info||!s||B3.mode!=='rec'||!B3.rec||s.key==='xx'||!MUS[s.key]){if(el)el.remove();return}
+  let h='';try{h=explainHtml(s.key,s.side)}catch(e){warn(e,'explainHtml')}
+  if(!h){if(el)el.remove();return}
+  if(!el){el=document.createElement('div');el.id='spbWhy';el.className='small';el.style.cssText='margin:6px 0;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.06);line-height:1.45';info.insertAdjacentElement('afterend',el)}
+  el.innerHTML=h}
+try{const o2=window.b3Info;if(typeof o2==='function'){const w2=function(){const r=o2.apply(this,arguments);try{showWhy()}catch(e){warn(e,'showWhy')}return r};w2.__apxSide=1;window.b3Info=w2;(0,eval)('b3Info=window.b3Info')}}catch(e){warn(e,'b3Info why')}
+
 document.addEventListener('click',(e)=>{const b=e.target.closest&&e.target.closest('[data-spb]');if(!b)return;e.stopPropagation();e.preventDefault();
   const[key,val]=b.dataset.spb.split(':');if(!['hand','boxFront','boardFront','footDom'].includes(key)||!['L','R'].includes(val))return;
   if(!S.body||typeof S.body!=='object')S.body={};S.body[key]=val;cache=null;
   try{commit('Seite gespeichert')}catch(_){try{save();render()}catch(__){}}},true);
 
-window.ApexSport={profiles:P,classify,loads:sportLoads,factor:SPORT_FAKTOR,recolor:sideRecolor};
+window.ApexSport={profiles:P,classify,loads:sportLoads,factor:SPORT_FAKTOR,recolor:sideRecolor,why:explainHtml};
 })();
