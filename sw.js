@@ -1,5 +1,5 @@
 // APEX Lift service worker: cache-first, so the app opens without network
-const CACHE='apex-lift-v67';
+const CACHE='apex-lift-v68';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icon.svg',
  'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js','https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js',
  './skin/supabase.js','./skin/supabase-config.js','./skin/perf.js','./anatomy-model.wasm','./mob/apley-scratch.webp','./mob/bws-rotation.webp','./mob/deep-squat.webp','./mob/einbeinstand.webp','./mob/fersen-gesaess.webp','./mob/fussstreckung.webp','./mob/halsrotation.webp','./mob/handgelenk-extension.webp','./mob/hueft-aussenrotation.webp','./mob/hueft-innenrotation.webp','./mob/knie-zur-wand.webp','./mob/schulter-aussenrotation.webp','./mob/schulter-innenrotation.webp','./mob/schulterflexion.webp','./mob/seitgraetsche.webp','./mob/sit-and-reach.webp','./mob/straight-leg-raise.webp','./mob/thomas-test.webp'];
