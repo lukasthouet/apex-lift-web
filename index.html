@@ -53,6 +53,9 @@ button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)
     var q=await sb.from('app_bundle').select('html').eq('id','dashboard').maybeSingle();
     if(q.error){say('Laden fehlgeschlagen: '+q.error.message,true);out.hidden=false;return}
     if(!q.data){say('Dieses Konto hat keinen Zugriff auf das Dashboard.',true);out.hidden=false;form.hidden=true;return}
+    // Der Login-Client gibt die Sitzung frei, bevor die App ihren eigenen Client startet (zwei Clients mit demselben
+    // Speicher würden sich gegenseitig die Refresh-Tokens entwerten und das Konto abmelden).
+    try{await sb.auth.stopAutoRefresh()}catch(_){}
     var html=q.data.html;document.open();document.write(html);document.close();
   }
   form.addEventListener('submit',async function(e){e.preventDefault();say('Anmeldung …');

@@ -46,11 +46,16 @@
   };
 
   // 3) Deep links from Supabase email confirmation and password reset.
+  const isAuthUrl = u => /^de\.lukasthouet\.apexlift:\/\/auth\/callback/.test(u || '');
+  const runAuth = (u, tries) => {
+    const handler = window.ApexLiftAuth && window.ApexLiftAuth.handleRedirect;
+    if (handler) handler(u);
+    else if (tries < 40) setTimeout(() => runAuth(u, tries + 1), 250);   // Sync-Skript lädt ggf. nach dem Android-Skript
+  };
   if (P.App && P.App.addListener) {
-    P.App.addListener('appUrlOpen', event => {
-      const handler = window.ApexLiftAuth && window.ApexLiftAuth.handleRedirect;
-      if (handler && event && event.url) handler(event.url);
-    });
+    P.App.addListener('appUrlOpen', event => { if (event && isAuthUrl(event.url)) runAuth(event.url, 0); });
+    // Hat Android die App im Hintergrund beendet, während der Browser offen war, kommt die Rückkehr-URL als Start-URL an.
+    try { if (P.App.getLaunchUrl) P.App.getLaunchUrl().then(r => { if (r && isAuthUrl(r.url)) runAuth(r.url, 0); }).catch(() => {}); } catch (_) {}
   }
 
   // 4) Zurück-Taste

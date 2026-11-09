@@ -92,7 +92,9 @@ async function applyAuthSession(session){
     syncStartedFor=null;CL.baseVersion=0;CL.dirty=false;CL.lastSaved=null
   }
   if(nextUser)await activateLocalAccount(nextUser);else await clearLocalAccount();
+  const justSignedIn=!!nextUser&&!syncUser;
   syncUser=nextUser;CL.db=syncUser?syncClient:null;authInitialized=true;syncUI();
+  if(justSignedIn)closeAccountDialogAfterLogin();
   if(!syncUser){syncStartedFor=null;CL.status='login';return}
   if(syncStartedFor!==syncUser.id){syncStartedFor=syncUser.id;await initialSync()}
 }
@@ -199,6 +201,17 @@ function renderAccountDialog(){
   closeButtons.forEach(button=>button.classList.toggle('acct-hidden',!syncUser));
   if(authInitialized&&!startupDialogShown&&!syncUser&&!d.open){startupDialogShown=true;d.showModal()}
 }
+/* Nach erfolgreicher Anmeldung (Passwort, Google, Bestätigungs-Link) schließt das Konto-Fenster von selbst. */
+function closeAccountDialogAfterLogin(){
+  try{
+    accountMode='welcome';
+    for(const id of['acctPassword','acctLoginPassword'])try{const el=document.getElementById(id);if(el)el.value=''}catch(_){}
+    const d=document.getElementById('accountDialog');
+    if(d&&d.open)d.close();
+    setAccountMessage('');
+    try{const b=window.Capacitor?.Plugins?.Browser;if(b?.close)Promise.resolve(b.close()).catch(()=>{})}catch(_){}
+  }catch(e){try{console.warn('Konto-Fenster konnte nicht geschlossen werden',e)}catch(_){}}
+}
 function saveSyncConfig(){
   const url=document.getElementById('acctUrl').value.trim().replace(/\/+$/,'');
   const anonKey=document.getElementById('acctKey').value.trim();
@@ -242,8 +255,11 @@ async function deleteAccount(){
   await syncClient.auth.signOut({scope:'local'});syncUser=null;CL.db=null;CL.baseVersion=0;CL.status='start';syncUI();setAccountMessage('Konto und Cloud-Daten wurden gelöscht.')
 }
 async function localSnapshot(){const copy=JSON.parse(JSON.stringify(S||{}));delete copy.tokens;return copy}
+const handledAuthUrls=new Set();
 async function handleAuthRedirect(url){
   try{
+    if(!url||handledAuthUrls.has(url))return;   // ein Code gilt nur einmal (Launch-URL und appUrlOpen liefern dieselbe Adresse)
+    handledAuthUrls.add(url);
     if(!syncClient)await cloudInit();
     const callback=new URL(url);
     const error=callback.searchParams.get('error_description')||callback.searchParams.get('error');
@@ -255,8 +271,11 @@ async function handleAuthRedirect(url){
       const access_token=hash.get('access_token'),refresh_token=hash.get('refresh_token');
       if(access_token&&refresh_token){const result=await syncClient.auth.setSession({access_token,refresh_token});if(result.error)throw result.error}
     }
-    const browser=window.Capacitor?.Plugins?.Browser;if(browser?.close)await browser.close()
-  }catch(e){showAuthError(e)}
+    const browser=window.Capacitor?.Plugins?.Browser;if(browser?.close)try{await browser.close()}catch(_){}
+  }catch(e){
+    const d=document.getElementById('accountDialog');if(d&&!d.open&&!syncUser)try{d.showModal()}catch(_){}
+    showAuthError(e)
+  }
 }
 window.ApexLiftAuth={handleRedirect:handleAuthRedirect,backToWelcome:()=>{if(accountMode==='login'){showAccountMode('welcome');return true}return false},get requiresAccount(){return authInitialized&&!syncUser}};
 async function saveMergedState(remoteState,remoteVersion){
